@@ -1,0 +1,12 @@
+<div class="header">
+    <a href="/">{{config.SITENAME}}</a> <span class="muted">{{config.SITESUBTITLE}}</span>
+</div>
+
+<div class=navigation>
+    <ul>
+        {% for section in config.SECTIONS %}
+            <li><a href="/{{ section[1] }}">{{ section[0] }}</a> </li>
+        {% endfor %}
+    </ul>
+</div>
+<div class=separator></div>

@@ -1,0 +1,205 @@
+<!doctype html>
+<html>
+<head>
+    <link href='http://fonts.googleapis.com/css?family=Noticia+Text:400,700' rel='stylesheet' type='text/css' />
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <meta name="description" content="">
+    <meta name="author" content="Grey Li">
+
+    <title> Grey Li&#39;s Blog </title>
+
+    <link rel="stylesheet" href="/static/css/style.css" type="text/css" />
+    <link rel="stylesheet" href="/static/css/pygments.css" type="text/css" />
+    <link rel="stylesheet" href="/static/css/font-awesome.min.css" type="text/css"/>
+    <link rel="shortcut icon" href="/static/images/favicon.ico">
+</head>
+<body>
+    <div class=container>
+        
+            <div class="header">
+    <a href="/">Grey Li&#39;s Blog</a> <span class="muted"></span>
+</div>
+
+<div class=navigation>
+    <ul>
+        
+            <li><a href="/tags">Tags</a> </li>
+        
+            <li><a href="/meta/projects">Projects</a> </li>
+        
+            <li><a href="/meta/about">About</a> </li>
+        
+    </ul>
+</div>
+<div class=separator></div>
+        
+        
+        <div class=body>
+        
+    <h2>A Refreshing Tonic, Realtime Updates with Phoenix Channels</h2>
+    <p>Over the last few months I've been working in <a href="http://elixir-lang.org/">Elixir</a> and its most popular web framework <a href="http://www.phoenixframework.org/">Phoenix</a>. During this time I built "Houston", a deployment tool written in Elixir/Phoenix to help make deploying at <a href="https://teacherspayteachers.com">TpT</a> easier by providing a simple uniform interface to all of <a href="http://keyanp.com/what-to-expect-when-youre-expectingto-write-a-jenkinsfile.html">our Jenkins Pipelines</a>. The Houston interface shows a number of important pieces of time-sensitive information that I needed to keep up-to-date so developers could coordinate deployments more effectively. I wanted to minimize the usage of other frameworks and tackle the problem quickly. I read about the team at <a href="https://thoughtbot.com/">thoughtbot</a> using <a href="https://robots.thoughtbot.com/how-we-replaced-react-with-phoenix">Phoenix Channels in lieu of React</a> to deliver updated content to the browser and decided that using Channels would allow me to implement realtime updates easily by leveraging Phoenix directly.</p>
+<p><img src="images/houston.png" alt="houston" style="width: 740px;"/></p>
+<p>A few weeks ago I had the pleasure of pairing with <a href="https://github.com/chrismccord">Chris McCord</a>, one of the co-creators of the Phoenix framework, when TpT invited him to help with our migration to Elixir. One of the things we worked on together was implementing realtime updates for Houston with Channels. The Houston code is unfortunately still closed source, but I have created a simple application, TonicTime, to demonstrate the same Channel concepts. You can see the code <a href="https://github.com/keyan/tonic-time">on GitHub</a> or visit the live demo at: <a href="http://demo.keyanp.com/time">http://demo.keyanp.com/time</a>. The code on GitHub is slightly modified from the snippets here due to how it is being hosted.</p>
+<p>After a short blurb about Channels we will look at the most important snippets from TonicTime to see how it all works.</p>
+<h2>What are Phoenix Channels?</h2>
+<p>Channels are a simple high-level abstraction for developing realtime components in Phoenix applications using WebSockets. Channels allow for interaction between application components that are not Elixir processes without building out a separate pub/sub system or using a third-party service like <a href="https://pusher.com/">Pusher</a>.</p>
+<h2>Using Channels</h2>
+<p>If you've visited the live demo you will have noticed that the time on the page is constantly updating without reloading the page or submitting a new web request. So how is this happening? Below is a diagram of some of the components involved. We'll look at the Javascript/HTML first and then the supporting Elixir modules. The lettered interaction stages are referenced below as we walk through the code.</p>
+<p><img src="images/websocket_arch.png" alt="arch_diagram" style="width: 740px;"/></p>
+<h3>HTML</h3>
+<p>The index template contains only one <code>div</code> with the current time inside, <a href="https://github.com/keyan/tonic-time/blob/master/web/templates/page/index.html.eex"><code>web/templates/page/index.html.eex</code></a>:</p>
+<div class="codehilite"><pre><span></span><span class="nt">&lt;div</span> <span class="na">id=</span><span class="s">&quot;clock&quot;</span> <span class="na">class=</span><span class="s">&quot;jumbotron&quot;</span><span class="nt">&gt;</span>
+  <span class="nt">&lt;h2&gt;</span><span class="cp">&lt;%=</span> <span class="vi">@time_now</span> <span class="cp">%&gt;</span><span class="nt">&lt;/h2&gt;</span>
+<span class="nt">&lt;/div&gt;</span>
+</pre></div>
+
+
+<p>Above <code>@time_now</code> is accessing a variable passed to the template in the <code>assigns</code> map. The Phoenix docs go into more detail about this, see <a href="https://hexdocs.pm/phoenix/Phoenix.View.html#render/3"><code>Phoenix.View.render/3</code></a>.</p>
+<h3>Javascript</h3>
+<p>All of our Javascript is in <a href="https://github.com/keyan/tonic-time/blob/master/web/static/js/app.js"><code>web/static/js/app.js</code></a>, it opens a socket connection to our application's mount point (A) and also specifies that we should replace the innerHTML content when receiving update messages (G):</p>
+<div class="codehilite"><pre><span></span><span class="c1">// We set an explicit id on the div in our HTML to allow</span>
+<span class="c1">// us to easily access it and replace its content.</span>
+<span class="kd">let</span> <span class="nx">container</span> <span class="o">=</span> <span class="nb">document</span><span class="p">.</span><span class="nx">getElementById</span><span class="p">(</span><span class="s2">&quot;clock&quot;</span><span class="p">)</span>
+
+<span class="c1">// The code on GitHub connects to &quot;/time/socket&quot;, this is due</span>
+<span class="c1">// to how TonicTime is deployed. The socket endpoint just needs</span>
+<span class="c1">// to match the socket created in the TonicTime.Endpoint module.</span>
+<span class="kd">let</span> <span class="nx">socket</span> <span class="o">=</span> <span class="k">new</span> <span class="nx">Socket</span><span class="p">(</span><span class="s2">&quot;/socket&quot;</span><span class="p">)</span>
+<span class="nx">socket</span><span class="p">.</span><span class="nx">connect</span><span class="p">()</span>
+
+<span class="kd">let</span> <span class="nx">timeChannel</span> <span class="o">=</span> <span class="nx">socket</span><span class="p">.</span><span class="nx">channel</span><span class="p">(</span><span class="s2">&quot;time:now&quot;</span><span class="p">)</span>
+
+<span class="c1">// When an `update` message is received we replace the contents</span>
+<span class="c1">// of the &quot;clock&quot; element with server-side rendered HTML.</span>
+<span class="nx">timeChannel</span><span class="p">.</span><span class="nx">on</span><span class="p">(</span><span class="s2">&quot;update&quot;</span><span class="p">,</span> <span class="p">({</span><span class="nx">html</span><span class="p">})</span> <span class="p">=&gt;</span> <span class="nx">container</span><span class="p">.</span><span class="nx">innerHTML</span> <span class="o">=</span> <span class="nx">html</span><span class="p">)</span>
+
+<span class="c1">// Attempt to connect to the WebSocket (Channel).</span>
+<span class="nx">timeChannel</span><span class="p">.</span><span class="nx">join</span><span class="p">()</span>
+<span class="p">.</span><span class="nx">receive</span><span class="p">(</span><span class="s2">&quot;ok&quot;</span><span class="p">,</span> <span class="nx">resp</span> <span class="p">=&gt;</span> <span class="nx">console</span><span class="p">.</span><span class="nx">log</span><span class="p">(</span><span class="s2">&quot;joined time channel&quot;</span><span class="p">,</span> <span class="nx">resp</span><span class="p">))</span>
+<span class="p">.</span><span class="nx">receive</span><span class="p">(</span><span class="s2">&quot;error&quot;</span><span class="p">,</span> <span class="nx">reason</span> <span class="p">=&gt;</span> <span class="nx">console</span><span class="p">.</span><span class="nx">log</span><span class="p">(</span><span class="s2">&quot;failed to join&quot;</span><span class="p">,</span> <span class="nx">reason</span><span class="p">))</span>
+</pre></div>
+
+
+<h3>Elixir</h3>
+<p>There are a number of moving parts here:</p>
+<ol>
+<li>
+<p>The socket mount-point (B) needs to be defined in our <a href="https://github.com/keyan/tonic-time/blob/8da4079570eddbbf340b897681dc2ae8423b4408/lib/tonic_time/endpoint.ex#L4"><code>Endpoint</code></a> setup. As mentioned above, this needs to match the socket endpoint that we attempt to connect to in our Javascript code:</p>
+<div class="codehilite"><pre><span></span><span class="n">socket</span> <span class="s2">&quot;/socket&quot;</span><span class="p">,</span> <span class="nc">TonicTime.UserSocket</span>
+</pre></div>
+
+
+</li>
+<li>
+<p>The function <a href="https://github.com/keyan/tonic-time/blob/6caacb2027b0f275b82d083262a9fd68d890d064/web/controllers/page_controller.ex#L6-L9"><code>Page.Controller.index</code></a> which handles <code>GET</code> requests to the index:</p>
+<div class="codehilite"><pre><span></span><span class="kd">def</span> <span class="n">index</span><span class="p">(</span><span class="n">conn</span><span class="p">,</span> <span class="n">_params</span><span class="p">)</span> <span class="k">do</span>
+  <span class="c1"># Get the time from the TimeManager state, we&#39;ll look at this</span>
+  <span class="c1"># in detail below.</span>
+  <span class="n">time_now</span> <span class="o">=</span> <span class="nc">TimeManager</span><span class="o">.</span><span class="n">time_now</span><span class="p">()</span>
+
+  <span class="c1"># Render the template `index.html` passing `time_now` in</span>
+  <span class="c1"># the `assigns` map.</span>
+  <span class="n">render</span> <span class="n">conn</span><span class="p">,</span> <span class="s2">&quot;index.html&quot;</span><span class="p">,</span> <span class="p">[</span><span class="ss">time_now</span><span class="p">:</span> <span class="n">time_now</span><span class="p">]</span>
+<span class="k">end</span>
+</pre></div>
+
+
+</li>
+<li>
+<p>The <a href="https://github.com/keyan/tonic-time/blob/master/web/channels/time_channel.ex"><code>TimeChannel</code></a> Channel (C) which listens for updates and alerts subscribers:</p>
+<div class="codehilite"><pre><span></span><span class="kd">defmodule</span> <span class="nc">TonicTime.TimeChannel</span> <span class="k">do</span>
+  <span class="kn">use</span> <span class="nc">TonicTime.Web</span><span class="p">,</span> <span class="ss">:channel</span>
+
+  <span class="c1"># Client method called after an update.</span>
+  <span class="kd">def</span> <span class="n">broadcast_update</span><span class="p">(</span><span class="n">time</span><span class="p">)</span> <span class="k">do</span>
+    <span class="c1"># Render the template again using the new time.</span>
+    <span class="n">html</span> <span class="o">=</span> <span class="nc">Phoenix.View</span><span class="o">.</span><span class="n">render_to_string</span><span class="p">(</span>
+        <span class="nc">TonicTime.PageView</span><span class="p">,</span>
+        <span class="s2">&quot;index.html&quot;</span><span class="p">,</span>
+        <span class="p">[</span><span class="ss">time_now</span><span class="p">:</span> <span class="n">time</span><span class="p">]</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Send the updated HTML to subscribers.</span>
+    <span class="nc">TonicTime.Endpoint</span><span class="o">.</span><span class="n">broadcast</span><span class="p">(</span>
+        <span class="s2">&quot;time:now&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;update&quot;</span><span class="p">,</span>
+        <span class="p">%{</span><span class="ss">html</span><span class="p">:</span> <span class="n">html</span><span class="p">}</span>
+    <span class="p">)</span>
+  <span class="k">end</span>
+
+  <span class="c1"># Called in `app.js` to subscribe to the Channel.</span>
+  <span class="kd">def</span> <span class="n">join</span><span class="p">(</span><span class="s2">&quot;time:now&quot;</span><span class="p">,</span> <span class="n">_params</span><span class="p">,</span> <span class="n">socket</span><span class="p">)</span> <span class="k">do</span>
+    <span class="p">{</span><span class="ss">:ok</span><span class="p">,</span> <span class="n">socket</span><span class="p">}</span>
+  <span class="k">end</span>
+<span class="k">end</span>
+</pre></div>
+
+
+</li>
+<li>
+<p>The <a href="https://github.com/keyan/tonic-time/blob/master/lib/tonic_time/time_manager.ex"><code>TimeManager</code></a> GenServer (D) which holds the current time in its state, and is also responsible for triggering updates to the time (E). If you look at the full file you'll see there is a lot of code there to facilitate interaction with the GenServer. Most of this is not important to understanding Channels, the most relevant function is below:</p>
+<div class="codehilite"><pre><span></span><span class="kd">defp</span> <span class="n">update_time</span> <span class="k">do</span>
+  <span class="n">updated_time</span> <span class="o">=</span>
+    <span class="s2">&quot;US/Eastern&quot;</span>
+    <span class="o">|&gt;</span> <span class="nc">Timex</span><span class="o">.</span><span class="n">now</span><span class="p">()</span>
+    <span class="o">|&gt;</span> <span class="nc">Timex</span><span class="o">.</span><span class="n">format!</span><span class="p">(</span><span class="s2">&quot;%I:%M:%S %p&quot;</span><span class="p">,</span> <span class="ss">:strftime</span><span class="p">)</span>
+
+  <span class="c1"># Schedule another update call to happen in 1 second.</span>
+  <span class="n">schedule_time_update</span><span class="p">()</span>
+
+  <span class="c1"># Send the updated to our Channel so it can update clients.</span>
+  <span class="nc">TonicTime.TimeChannel</span><span class="o">.</span><span class="n">broadcast_update</span><span class="p">(</span><span class="n">updated_time</span><span class="p">)</span>
+
+  <span class="p">%{</span><span class="ss">clock</span><span class="p">:</span> <span class="n">updated_time</span><span class="p">}</span>
+<span class="k">end</span>
+</pre></div>
+
+
+</li>
+</ol>
+<h2>Conclusion</h2>
+<p>By leveraging Channels I was able to reduce the use of another framework in my project and still provide users with seamless dynamic page content. While we have looked at a trivial example of what Channels can do, there are many possibilities and native support in Phoenix makes implementation fast and natural.</p>
+<p>Hopefully through this overview I was able to provide you with an easy to follow introduction to Channels and a framework for implementing them in your own projects.</p>
+<h2>Credits</h2>
+<p>A huge thanks to <a href="https://github.com/chrismccord">Chris McCord</a> who walked me through Channels and their usage in Phoenix. Credit for the pun in the title, "A refreshing tonic", goes to my fantastic friend and coworker <a href="https://github.com/shantiii">Shanti Chellaram</a>, who is almost as good as making up puns as she is at programming. And finally a big thanks to <a href="https://github.com/ryansydnor">Ryan Sydnor</a> for his help with building Houston, his many edits to this post, and his endless enthusiasm.</p>
+    <small>Published at <em>May 23, 2017</em></small>
+    
+    , <small>Tagged with
+        
+            <a href="/tag/elixir/"><em>elixir</em></a>
+        
+            <a href="/tag/phoenix/"><em>phoenix</em></a>
+        
+            <a href="/tag/html/"><em>html</em></a>
+        
+        </small>
+	 
+
+        </div>
+        
+        
+            <div class=footer>
+  <p>
+    <div class=social style="font-size: 35px;">
+      <ul>
+        
+          <a href="mailto:withlihui@gmail.com" target="_blank">
+            <li><i class="fa fa-envelope-square"></i> </li>
+        </a>
+        <a href="http://twitter.com/@" target="_blank"> <li> <i class="fa fa-twitter-square"> </li></i> </a>
+        
+        <a href="https://github.com/greyli" target="_blank"> <li> <i class="fa fa-github-square"></i> </li> </a>
+        
+        <a href="https://plus.google.com/u/0/103821645559776845966" target="_blank"><li><i class="fa fa-google-plus-square"></i> </li> </a>
+        
+<a href="https://" target="_blank"><li><i class="fa fa-stack-overflow fa-stack-overflow-square" style="font-size: 22px"></i></li></a>
+
+      </ul>
+    </div>
+  </p>
+  <p>© 2017 Grey Li</p>
+</div>
+        
+    </div>
+</body>
+</html>

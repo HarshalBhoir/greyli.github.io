@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+
+{% block content %}
+    <h2>Posts tagged with <em>{{ tag }}</em></h2>
+    {% if pages %}
+        {% include "_list.html" %}
+    {% else %}
+    The box is empty...
+    {% endif %}
+{% endblock content %}

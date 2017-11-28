@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+
+{% block content %}
+    <h2>{{ page.title }}</h2>
+    {{ page.html|safe }}
+    <small>Published at <em>{{ page.date.strftime('%b %d, %Y') }}</em></small>
+    {% if page.tags %}
+    , <small>Tagged with
+        {% for tag in page.tags.split(',') %}
+            <a href="{{ url_for('tag', tag=tag) }}"><em>{{ tag }}</em></a>
+        {% endfor %}
+        </small>
+	{% endif %} 
+{% endblock content %}

@@ -1,0 +1,10 @@
+{% for page in pages %}
+    {% if not page.path.startswith('meta/') %}
+    <div class=entry-overview>
+      <div class="date">{{ page.date.strftime(config.DATE_FORMAT) }}</div>
+      <div class="detail">
+          <h1><a href="{{ url_for('page', path=page.path) }}">{{ page.title }}</a></h1>
+      </div>
+    </div>
+    {% endif %}
+{% endfor %}
