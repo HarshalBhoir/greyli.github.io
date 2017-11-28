@@ -1,5 +1,8 @@
 FLATPAGES_EXTENSION = '.md'
 
+FREEZER_DESTINATION = '../blog'
+FREEZER_BASE_URL = '/blog'
+
 # Blog Profile
 AUTHOR = u'Grey Li'
 SITENAME = u'Grey Li\'s Blog'

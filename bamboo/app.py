@@ -17,6 +17,7 @@ def index():
                     key=lambda page: page.meta['date'])
 	return render_template('index.html', pages=sorted_posts)
 
+
 @app.route('/tag/<string:tag>/')
 def tag(tag):
 	tagged_pages = []
@@ -25,8 +26,8 @@ def tag(tag):
 			page_tags = page.meta['tags'].split(',')
 			if tag in page_tags:
 				tagged_pages.append(page)
-    #tagged = [p for p in pages if tag in p.meta.get('tags', [])]
 	return render_template('tag.html', pages=tagged_pages, tag=tag)
+
 
 @app.route('/<path:path>/')
 def page(path):
