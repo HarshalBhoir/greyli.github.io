@@ -7,6 +7,7 @@ FREEZER_BASE_URL = '/blog'
 AUTHOR = u'Grey Li'
 SITENAME = u'Grey Li\'s Blog'
 SITESUBTITLE = u'' #optional
+SITEURL = '/blog'
 
 # Navigation sections and relative URL:
 SECTIONS = [('Tags', 'tags'),
