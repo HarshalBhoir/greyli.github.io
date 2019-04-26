@@ -10,9 +10,8 @@ SITESUBTITLE = u'' #optional
 SITEURL = '/blog'
 
 # Navigation sections and relative URL:
-SECTIONS = [('Tags', 'tags'),
-        ('Projects', 'meta/projects'),
-        ('About', 'meta/about')]
+SECTIONS = [('Tags', 'tags.html'),
+        ('About', 'about.html')]
 
 DATE_FORMAT = '%b %d, %Y'
 DEFAULT_PAGINATION = 10
@@ -21,9 +20,8 @@ DEFAULT_PAGINATION = 10
 # =============================
 EMAIL = 'withlihui@gmail.com'
 GITHUB_URL = 'https://github.com/greyli'
-STACKOVERFLOW_URL = 'https://'
-TWITTER_USERNAME = '@'
-GOOGLEPLUS_URL = 'https://plus.google.com/u/0/103821645559776845966'
+STACKOVERFLOW_URL = 'https://stackoverflow.com/users/5511849/grey-li'
+TWITTER_USERNAME = '@greylihui'
 LINKEDIN_URL = ''
 FACEBOOK_URL = ''
 PINTEREST_URL = ''
